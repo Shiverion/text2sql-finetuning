@@ -61,6 +61,17 @@ text2sql-finetuning/
 
 ## Quickstart
 
+```bash
+git clone https://github.com/Shiverion/text2sql-finetuning.git
+cd text2sql-finetuning
+```
+
+### Run it on Google Colab (free T4)
+Open `notebooks/02_finetune_qlora.ipynb` in Colab → *Runtime → Change runtime
+type → T4 GPU* → *Runtime → Run all*. The first cell clones this repo into the
+session automatically; no manual upload needed. Then run
+`notebooks/03_inference_eval.ipynb` in the same session to score the model.
+
 ### 0. Verify the pipeline with zero setup (CPU, no downloads)
 The data/prompt/evaluation logic runs on the Python **standard library** only:
 

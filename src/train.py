@@ -117,8 +117,14 @@ def main() -> None:
                             remove_columns=train_ds.column_names)
 
     # ----- trainer ------------------------------------------------------- #
+    # TRL's SFTConfig / SFTTrainer signatures have drifted across releases
+    # (max_seq_length -> max_length; tokenizer -> processing_class). Build the
+    # kwargs and filter them against the *installed* signatures so the same code
+    # runs on whatever TRL version Colab/Unsloth pulls in.
+    import inspect
     from trl import SFTTrainer, SFTConfig
-    sft_args = SFTConfig(
+
+    sft_kwargs = dict(
         output_dir=cfg.train.output_dir,
         per_device_train_batch_size=cfg.train.per_device_train_batch_size,
         gradient_accumulation_steps=cfg.train.gradient_accumulation_steps,
@@ -138,12 +144,18 @@ def main() -> None:
         max_seq_length=cfg.model.max_seq_length,
         report_to="none",
     )
-    trainer = SFTTrainer(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=train_ds,
-        args=sft_args,
-    )
+    cfg_fields = set(inspect.signature(SFTConfig.__init__).parameters)
+    if "max_seq_length" not in cfg_fields and "max_length" in cfg_fields:
+        sft_kwargs["max_length"] = sft_kwargs.pop("max_seq_length")
+    sft_args = SFTConfig(**{k: v for k, v in sft_kwargs.items() if k in cfg_fields})
+
+    trainer_kwargs = dict(model=model, train_dataset=train_ds, args=sft_args)
+    trainer_params = set(inspect.signature(SFTTrainer.__init__).parameters)
+    if "tokenizer" in trainer_params:
+        trainer_kwargs["tokenizer"] = tokenizer
+    elif "processing_class" in trainer_params:
+        trainer_kwargs["processing_class"] = tokenizer
+    trainer = SFTTrainer(**trainer_kwargs)
 
     # Completion-only loss: mask everything before the assistant turn so the
     # model is graded only on the SQL it must produce, not on the schema/question.
