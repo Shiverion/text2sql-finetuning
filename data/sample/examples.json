@@ -1,0 +1,37 @@
+[
+  {
+    "db_id": "fintech",
+    "question": "Who were the top 3 performing merchants by total settled transaction amount in Q1 2024?",
+    "evidence": "Q1 2024 means txn_date between 2024-01-01 and 2024-03-31; performance is the sum of amount where status = 'settled'.",
+    "SQL": "SELECT m.name, SUM(t.amount) AS total FROM merchants m JOIN transactions t ON m.merchant_id = t.merchant_id WHERE t.status = 'settled' AND t.txn_date BETWEEN '2024-01-01' AND '2024-03-31' GROUP BY m.merchant_id ORDER BY total DESC LIMIT 3",
+    "difficulty": "moderate"
+  },
+  {
+    "db_id": "fintech",
+    "question": "How many merchants are in the Retail category?",
+    "evidence": "",
+    "SQL": "SELECT COUNT(*) FROM merchants WHERE category = 'Retail'",
+    "difficulty": "simple"
+  },
+  {
+    "db_id": "fintech",
+    "question": "What is the total refunded amount across all merchants?",
+    "evidence": "Refunded transactions have status = 'refunded'.",
+    "SQL": "SELECT SUM(amount) FROM transactions WHERE status = 'refunded'",
+    "difficulty": "simple"
+  },
+  {
+    "db_id": "fintech",
+    "question": "List each city and its number of merchants, most merchants first.",
+    "evidence": "",
+    "SQL": "SELECT city, COUNT(*) AS n FROM merchants GROUP BY city ORDER BY n DESC",
+    "difficulty": "simple"
+  },
+  {
+    "db_id": "fintech",
+    "question": "Which merchant had the highest single settled transaction, and how much?",
+    "evidence": "",
+    "SQL": "SELECT m.name, t.amount FROM merchants m JOIN transactions t ON m.merchant_id = t.merchant_id WHERE t.status = 'settled' ORDER BY t.amount DESC LIMIT 1",
+    "difficulty": "moderate"
+  }
+]

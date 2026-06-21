@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Data & model artifacts (large; regenerate via the pipeline)
+data/processed/
+data/raw/
+data/bird/
+train/
+dev/
+*.zip
+outputs/
+*.sqlite-journal
+
+# Keep the small bundled sample so the smoke test runs out-of-the-box
+!data/sample/
+!data/sample/**
+
+# HF / training caches
+.cache/
+wandb/
+
+# OS
+.DS_Store
+Thumbs.db

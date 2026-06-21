@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------------------
+# Text2SQL fine-tuning — dependencies
+#
+# The pipeline is layered so you only install what you need:
+#   * data_prep / evaluate / smoke_test  -> Python stdlib only (no installs)
+#   * data exploration notebook          -> pandas, matplotlib, datasets
+#   * training / inference (GPU)         -> the ML stack below
+#   * PDF report                         -> fpdf2
+# ---------------------------------------------------------------------------
+
+# ---- training & inference (GPU; install on Colab/local CUDA) ----
+# Unsloth pulls compatible torch/transformers/xformers itself on Colab:
+#   pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+unsloth                 # 2x faster QLoRA, low VRAM (free T4 friendly)
+transformers>=4.46
+trl>=0.12               # SFTTrainer / SFTConfig
+peft>=0.13
+accelerate>=1.0
+bitsandbytes>=0.44      # 4-bit (QLoRA) quantization — needs CUDA
+datasets>=3.0
+torch>=2.3              # installed automatically on Colab; match your CUDA locally
+
+# ---- data exploration / plots ----
+pandas>=2.0
+matplotlib>=3.7
+
+# ---- report generation ----
+fpdf2>=2.8
