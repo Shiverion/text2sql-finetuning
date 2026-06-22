@@ -77,7 +77,8 @@ def _make_record(
 # --------------------------------------------------------------------------- #
 def load_bird(
     json_path: str,
-    db_root: str,
+    db_root: Optional[str] = None,
+    tables_json: Optional[str] = None,
     dialect: str = "SQLite",
     include_evidence: bool = True,
     schema_mode: str = "ddl",
@@ -85,14 +86,29 @@ def load_bird(
 ) -> List[Dict]:
     """Parse a BIRD train.json / dev.json file.
 
-    ``db_root`` is the directory that holds one folder per db_id, each containing
-    ``{db_id}.sqlite`` (i.e. BIRD's ``train_databases`` or ``dev_databases``).
-    Schemas are cached per db_id so we only read each sqlite file once.
+    Schema source (pick at least one):
+      * ``tables_json`` — BIRD's ``*_tables.json``; schemas built WITHOUT any
+        database files. Use this for training to skip the multi-GB ``*_databases``
+        download (training never executes SQL, so it doesn't need the .sqlite).
+      * ``db_root`` — directory with one folder per db_id holding ``{db_id}.sqlite``
+        (BIRD's ``train_databases`` / ``dev_databases``). Required for *execution*
+        evaluation, since ``db_path`` must point at a real database.
+
+    When both are given, schemas come from ``tables_json`` and ``db_path`` is set
+    from ``db_root`` (so the dev set can still be executed). ``db_path`` is left
+    empty when no .sqlite is available — such records are still trainable, just
+    not executable.
     """
     with open(json_path, encoding="utf-8") as fh:
         raw = json.load(fh)
     if limit:
         raw = raw[:limit]
+
+    # Pre-build schemas from tables.json (db_id -> schema string), if provided.
+    tbl_schema: Dict[str, str] = {}
+    if tables_json:
+        for entry in _read_json_any(tables_json):
+            tbl_schema[entry["db_id"]] = schema_utils.schema_from_bird_tables(entry, mode=schema_mode)
 
     schema_cache: Dict[str, str] = {}
     records: List[Dict] = []
@@ -100,29 +116,35 @@ def load_bird(
 
     for ex in raw:
         db_id = ex["db_id"]
-        db_path = os.path.join(db_root, db_id, f"{db_id}.sqlite")
-        if db_id not in schema_cache:
-            if not os.path.exists(db_path):
-                skipped += 1
-                continue
-            schema_cache[db_id] = schema_utils.serialize_schema(db_path, mode=schema_mode)
+        db_path = os.path.join(db_root, db_id, f"{db_id}.sqlite") if db_root else ""
+        if db_path and not os.path.exists(db_path):
+            db_path = ""                      # keep the record, just non-executable
 
-        sql = _first_present(ex, ["SQL", "sql", "query"])
-        evidence = _first_present(ex, ["evidence"]) if include_evidence else ""
+        # Resolve the schema: tables.json first, else read it from the .sqlite.
+        if db_id in tbl_schema:
+            schema = tbl_schema[db_id]
+        elif db_path:
+            if db_id not in schema_cache:
+                schema_cache[db_id] = schema_utils.serialize_schema(db_path, mode=schema_mode)
+            schema = schema_cache[db_id]
+        else:
+            skipped += 1
+            continue
+
         records.append(_make_record(
             db_id=db_id,
             question=_first_present(ex, ["question"]),
-            sql=sql,
-            schema=schema_cache[db_id],
+            sql=_first_present(ex, ["SQL", "sql", "query"]),
+            schema=schema,
             db_path=db_path,
-            evidence=evidence,
+            evidence=_first_present(ex, ["evidence"]) if include_evidence else "",
             difficulty=_first_present(ex, ["difficulty"]),
             dialect=dialect,
         ))
 
     if skipped:
-        print(f"[data_prep] WARNING: skipped {skipped} examples with missing .sqlite "
-              f"(check --db_root: {db_root})")
+        print(f"[data_prep] WARNING: skipped {skipped} examples with no schema source "
+              f"(no tables.json entry and no .sqlite). db_root={db_root!r} tables_json={tables_json!r}")
     return records
 
 
@@ -224,7 +246,8 @@ def main() -> None:
 
     # bird
     p.add_argument("--json", help="path to train.json / dev.json (bird, synsql)")
-    p.add_argument("--db_root", help="dir with one folder per db_id (bird)")
+    p.add_argument("--db_root", help="dir with one folder per db_id (bird; needed for execution eval)")
+    p.add_argument("--tables_json", help="BIRD *_tables.json; build schemas without databases (training)")
 
     # hf
     p.add_argument("--hf_dataset")
@@ -236,10 +259,13 @@ def main() -> None:
     args = p.parse_args()
 
     if args.source == "bird":
-        assert args.json and args.db_root, "--json and --db_root are required for bird"
+        assert args.json, "--json is required for bird"
+        assert args.db_root or args.tables_json, (
+            "provide --tables_json (schemas without databases; for training) "
+            "and/or --db_root (real .sqlite; needed for execution eval)")
         records = load_bird(
-            args.json, args.db_root, dialect=args.dialect,
-            include_evidence=not args.no_evidence,
+            args.json, db_root=args.db_root, tables_json=args.tables_json,
+            dialect=args.dialect, include_evidence=not args.no_evidence,
             schema_mode=args.schema_mode, limit=args.limit,
         )
     elif args.source == "synsql":

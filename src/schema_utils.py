@@ -126,6 +126,60 @@ def schema_from_create_list(create_statements: List[str]) -> str:
     return "\n\n".join(_normalize_ddl(s) for s in create_statements if s and s.strip())
 
 
+def schema_from_bird_tables(entry: dict, mode: str = "ddl") -> str:
+    """Build a schema string from a BIRD ``*_tables.json`` entry — NO .sqlite needed.
+
+    This lets us train without downloading BIRD's multi-GB ``*_databases`` archives
+    (the database files are only required for *execution* evaluation, not training).
+
+    A BIRD tables entry looks like::
+        {"db_id": "...",
+         "table_names_original": ["T1", "T2"],
+         "column_names_original": [[-1,"*"],[0,"a"],[0,"b"],[1,"c"]],  # [table_idx, col]
+         "column_types": ["text","number",...],          # aligned with the list above
+         "primary_keys": [1, [2,3]],                      # column indices (int or list)
+         "foreign_keys": [[3, 1]]}                         # [from_col_idx, to_col_idx]
+    """
+    tables = entry["table_names_original"]
+    cols = entry["column_names_original"]
+    types = entry.get("column_types", [])
+
+    pk_idx = set()
+    for pk in (entry.get("primary_keys") or []):
+        pk_idx.update(pk if isinstance(pk, list) else [pk])
+
+    per_table: Dict[int, List[tuple]] = {t: [] for t in range(len(tables))}
+    for i, (tidx, cname) in enumerate(cols):
+        if tidx < 0:                      # the synthetic "*" column
+            continue
+        ctype = (types[i] if i < len(types) else "text") or "text"
+        per_table[tidx].append((cname, str(ctype).upper(), i in pk_idx))
+
+    if mode == "compact":
+        lines = []
+        for t, name in enumerate(tables):
+            cs = ", ".join(f"{c} {ty}{' PK' if pk else ''}" for c, ty, pk in per_table[t])
+            lines.append(f"{name}({cs})")
+        return "\n".join(lines)
+
+    # DDL mode: include columns, primary keys and foreign keys.
+    fk_by_table: Dict[int, List[tuple]] = {}
+    for a, b in (entry.get("foreign_keys") or []):
+        try:
+            ta = cols[a][0]
+            fk_by_table.setdefault(ta, []).append((cols[a][1], tables[cols[b][0]], cols[b][1]))
+        except (IndexError, TypeError):
+            continue
+
+    blocks = []
+    for t, name in enumerate(tables):
+        body = [f"  {c} {ty}{' PRIMARY KEY' if pk else ''}" for c, ty, pk in per_table[t]]
+        body += [f"  FOREIGN KEY ({col}) REFERENCES {rtab}({rcol})"
+                 for col, rtab, rcol in fk_by_table.get(t, [])]
+        blocks.append(f'CREATE TABLE "{name}" (\n' + ",\n".join(body) + "\n);")
+    return "\n\n".join(blocks)
+
+
 if __name__ == "__main__":  # tiny manual check
     import sys
     if len(sys.argv) > 1:

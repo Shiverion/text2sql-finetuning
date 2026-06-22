@@ -66,11 +66,20 @@ git clone https://github.com/Shiverion/text2sql-finetuning.git
 cd text2sql-finetuning
 ```
 
-### Run it on Google Colab (free T4)
-Open `notebooks/02_finetune_qlora.ipynb` in Colab → *Runtime → Change runtime
-type → T4 GPU* → *Runtime → Run all*. The first cell clones this repo into the
-session automatically; no manual upload needed. Then run
-`notebooks/03_inference_eval.ipynb` in the same session to score the model.
+### Run it on Google Colab or Kaggle (free T4)
+Open `notebooks/02_finetune_qlora.ipynb` → enable the GPU runtime → *Run all*.
+The first cell clones this repo into the session automatically; no manual upload
+needed. Then run `notebooks/03_inference_eval.ipynb` in the same session to score.
+
+- **Colab:** Runtime → Change runtime type → **T4 GPU**.
+- **Kaggle:** Settings → Accelerator → **GPU T4 x2**, and **Internet → On**.
+
+**Fits Kaggle's 19 GB disk.** Training only needs schema *text*, not databases,
+so the pipeline builds train schemas from BIRD's small `train_tables.json`
+(`data_prep --tables_json …`) and **skips the ~8 GB `train_databases` download**.
+Only `dev_databases` (~1.3 GB) is fetched, for execution-accuracy eval. Big zips
+download to `/tmp` (scratch, off the working-disk quota) and are deleted after
+extraction.
 
 ### 0. Verify the pipeline with zero setup (CPU, no downloads)
 The data/prompt/evaluation logic runs on the Python **standard library** only:
