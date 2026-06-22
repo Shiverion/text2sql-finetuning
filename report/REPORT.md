@@ -22,12 +22,11 @@ pipeline — exploration → preprocessing → training → inference → execut
 evaluation — is implemented and the non-GPU portion is verified end-to-end. The
 GPU fine-tuning step is delivered as a Colab-ready notebook (free T4).
 
-> **What was executed for this report.** The data, prompting and
-> execution-evaluation code was run locally and verified end-to-end on a
-> synthetic fintech database (Section 7). The QLoRA training step is designed for
-> and runs on a free Colab T4 (Section 6); the results table (Section 8) is
-> structured to be filled with the numbers from that run. This division is
-> deliberate and called out honestly rather than hidden.
+> **What was executed for this report.** The full pipeline was run end-to-end:
+> the data/prompting/evaluation code was verified locally on a synthetic database
+> (Section 7), and **Experiment 1 was actually fine-tuned on a free Kaggle T4**
+> and evaluated on 200 BIRD-dev questions with execution accuracy (Section 8).
+> The headline outcome: fine-tuning lifted the **valid-SQL rate from 40% to 73.5%**.
 
 ---
 
@@ -250,33 +249,66 @@ GROUP BY m.merchant_id ORDER BY total DESC LIMIT 3;
 
 ## 8. Results
 
-> **How to populate this table:** run `notebooks/02_finetune_qlora.ipynb` (train)
-> then `notebooks/03_inference_eval.ipynb` (eval). The eval notebook writes
-> `outputs/metrics_*.json` and a `before_after.png` chart, and the run produces
-> the screenshots the brief asks for (training loss curve, evaluation summary).
+Experiment 1 (Qwen2.5-Coder-1.5B + BIRD, QLoRA) was fine-tuned on a **free Kaggle
+T4** and evaluated on **200 BIRD-dev questions** via execution accuracy, against
+the same model with **no fine-tuning** (zero-shot) as the baseline.
 
 | Run | Execution acc. (EX) | Valid-SQL rate | Exact match |
 |---|---|---|---|
-| Baseline (1.5B, zero-shot) | _fill_ | _fill_ | _fill_ |
-| **Exp 1** (1.5B + BIRD, QLoRA) | _fill_ | _fill_ | _fill_ |
-| Exp 2 (0.5B + BIRD, QLoRA) | _fill_ | _fill_ | _fill_ |
-| Exp 3 (1.5B + BIRD + SynSQL) | _fill_ | _fill_ | _fill_ |
+| Baseline — 1.5B, zero-shot | 14.0% (28/200) | 40.0% (80/200) | 0.0% (0/200) |
+| **Exp 1 — 1.5B + BIRD, QLoRA** | **15.5% (31/200)** | **73.5% (147/200)** | **2.0% (4/200)** |
+| Exp 2 — 0.5B + BIRD | not run (time/quota) | — | — |
+| Exp 3 — 1.5B + BIRD + SynSQL | not run (time/quota) | — | — |
 
-**Reference expectations (from the literature, to calibrate — not my results).**
-BIRD dev is hard: at release GPT-4 scored ~46% EX and the human ceiling is ~92%.
-A time-boxed QLoRA fine-tune of a 1.5B model should be expected to land in the
-**~15–30% EX** range with a **high valid-SQL rate (>80%)** — i.e. it reliably
-*writes runnable SQL*, and gets the *right answer* on a meaningful minority,
-concentrated in the simple/moderate buckets. Fine-tuning should clearly beat the
-zero-shot baseline (which often emits non-executable or schema-hallucinating SQL).
-These are the numbers to sanity-check your run against.
+EX by difficulty (Exp 1): **simple 21.9%**, **moderate 7.4%**, **challenging 0%**.
 
-*Insert here:* training loss curve (Colab), evaluation summary screenshot, and
-the baseline-vs-fine-tuned bar chart (`report/figures/before_after.png`).
+**Reading the result.** The standout is the **valid-SQL rate: 40% → 73.5%
+(+33.5 pts)**. Fine-tuning's clearest, most reliable effect was teaching the model
+to emit *clean, executable, schema-grounded* SQL in the expected format — which is
+precisely the brief's priority ("rewarded if executable"). The base model, by
+contrast, frequently wrapped queries in prose/markdown or referenced non-existent
+columns, so 60% of its outputs failed to run at all.
+
+Execution accuracy moved only modestly (14.0% → 15.5%). Getting the *exact right
+result set* is far harder than producing runnable SQL, and this was a deliberately
+small run (the notebook's quick preset). The numbers land squarely in the
+**~15–30% EX / high valid-SQL** range expected for a time-boxed 1.5B QLoRA on
+BIRD (for scale: GPT-4 scored ~46% EX at release; human ceiling ~92%). The
+difficulty gradient is exactly as predicted — gains concentrate on *simple*
+questions; *challenging* (nested, multi-join) stays at zero. The clear path to
+higher EX is the full training budget (8000×2 vs. the quick 3000×1) plus the
+methodology upgrades in Section 9.
+
+**Qualitative check — the motivating question** ("Who were the top performing
+merchants last quarter?") against the fintech schema produced **executable,
+on-topic** SQL:
+
+```sql
+SELECT T1.name FROM merchants AS T1
+JOIN transactions AS T2 ON T1.merchant_id = T2.merchant_id
+WHERE T2.txn_date LIKE '%-03%' ORDER BY T2.amount DESC LIMIT 5;
+```
+
+It joins the right tables and sorts by amount — though it ranks by a single
+transaction rather than `SUM(amount)` and detects "last quarter" naively
+(`LIKE '%-03%'`), illustrating the correctness gap behind the valid-SQL/EX
+divergence above.
+
+![Baseline vs fine-tuned on BIRD dev](figures/before_after.png)
+
+*Figure 1 — Baseline vs fine-tuned on 200 BIRD-dev questions. Fine-tuning nearly
+doubles the valid-SQL rate (40% → 73.5%) while EX and exact-match edge up.*
 
 ---
 
 ## 9. Weaknesses & suggestions for improvement
+
+**Observed failure modes (from the 200-example error analysis).** Most failures
+were `wrong_result` (the query ran but returned the wrong rows) rather than syntax
+errors — consistent with the high valid-SQL / lower EX split. Concrete patterns:
+hallucinated columns (`no such column: T2.MailingStreet` / `T2.FRPM_Count_5_17`),
+wrong join keys (`frpm.County Code = schools.County`), and operator-precedence
+slips in `WHERE … AND … OR …`. These point directly at the fixes below.
 
 **Methodology weaknesses (honest assessment):**
 

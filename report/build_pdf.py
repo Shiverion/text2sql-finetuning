@@ -133,6 +133,19 @@ def _table(pdf: PDF, rows):
     pdf.ln(2)
 
 
+def _image(pdf: PDF, path: str):
+    if not os.path.exists(path):
+        pdf.set_font("Courier", "", 8)
+        pdf.set_text_color(150)
+        pdf.multi_cell(0, 5, f"[missing image: {path}]")
+        pdf.set_text_color(0)
+        return
+    avail = pdf.w - pdf.l_margin - pdf.r_margin
+    w = avail * 0.82
+    pdf.image(path, x=(pdf.w - w) / 2, w=w)
+    pdf.ln(3)
+
+
 def _hr(pdf: PDF):
     pdf.ln(1)
     pdf.set_draw_color(210)
@@ -141,6 +154,7 @@ def _hr(pdf: PDF):
 
 
 def render(md_path: str, pdf_path: str) -> None:
+    base_dir = os.path.dirname(os.path.abspath(md_path))
     with open(md_path, encoding="utf-8") as fh:
         lines = fh.read().split("\n")
 
@@ -190,6 +204,14 @@ def render(md_path: str, pdf_path: str) -> None:
         # blank line -> paragraph break
         if stripped == "":
             flush_para()
+            i += 1
+            continue
+
+        # image: ![alt](path)
+        m = re.match(r"^!\[[^\]]*\]\(([^)]+)\)\s*$", stripped)
+        if m:
+            flush_para()
+            _image(pdf, os.path.join(base_dir, m.group(1)))
             i += 1
             continue
 
