@@ -24,5 +24,8 @@ torch>=2.3              # installed automatically on Colab; match your CUDA loca
 pandas>=2.0
 matplotlib>=3.7
 
+# ---- fast BIRD download (notebook) ----
+remotezip>=0.12   # pull only train.json/train_tables.json from the 8 GB remote zip via HTTP range
+
 # ---- report generation ----
 fpdf2>=2.8

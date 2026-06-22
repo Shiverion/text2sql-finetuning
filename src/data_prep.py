@@ -113,8 +113,11 @@ def load_bird(
     schema_cache: Dict[str, str] = {}
     records: List[Dict] = []
     skipped = 0
+    total = len(raw)
 
-    for ex in raw:
+    for n, ex in enumerate(raw):
+        if n and n % 2000 == 0:
+            print(f"[data_prep] processed {n}/{total} examples ...", flush=True)
         db_id = ex["db_id"]
         db_path = os.path.join(db_root, db_id, f"{db_id}.sqlite") if db_root else ""
         if db_path and not os.path.exists(db_path):
