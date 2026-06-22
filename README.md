@@ -12,6 +12,9 @@ the experiment design and a written report.
 > **TL;DR model choice:** [`Qwen2.5-Coder-1.5B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct)
 > (1.54B params, **Apache-2.0**, code-specialised) fine-tuned with **QLoRA** via
 > **Unsloth** on **BIRD**, evaluated by **execution accuracy** on a real SQLite DB.
+>
+> **TL;DR result:** on 200 BIRD-dev questions, fine-tuning lifted the **valid-SQL
+> rate 40% → 73.5%** (EX 14.0% → 15.5%). See [Results](#results).
 
 ---
 
@@ -133,6 +136,27 @@ python report/build_pdf.py        # -> report/REPORT.pdf
 
 Each is a one-line preset in [`src/config.py`](src/config.py). Full rationale and
 results in the [report](report/REPORT.md).
+
+---
+
+## Results
+
+**Experiment 1** (Qwen2.5-Coder-1.5B + BIRD, QLoRA) — fine-tuned on a free Kaggle
+T4, evaluated on **200 BIRD-dev** questions. Adapter:
+[`Shiverion/qwen2.5-coder-1.5b-bird-qlora`](https://huggingface.co/Shiverion/qwen2.5-coder-1.5b-bird-qlora).
+
+| Run | Execution acc. (EX) | Valid-SQL rate | Exact match |
+|---|---|---|---|
+| Baseline (1.5B, zero-shot) | 14.0% | 40.0% | 0.0% |
+| **Exp 1 (1.5B + BIRD, QLoRA)** | **15.5%** | **73.5%** | **2.0%** |
+
+**Headline: fine-tuning nearly doubled the valid-SQL rate (40% → 73.5%)** — the
+model learned to emit clean, executable, schema-grounded SQL (the brief's
+priority). EX gains are modest, as expected for a small/quick run. EX by
+difficulty: simple 21.9%, moderate 7.4%, challenging 0%. Executed notebook +
+metrics in [`results/`](results/); full analysis in [`report/REPORT.md`](report/REPORT.md).
+
+![Baseline vs fine-tuned](report/figures/before_after.png)
 
 ---
 
