@@ -13,8 +13,9 @@ the experiment design and a written report.
 > (1.54B params, **Apache-2.0**, code-specialised) fine-tuned with **QLoRA** via
 > **Unsloth** on **BIRD**, evaluated by **execution accuracy** on a real SQLite DB.
 >
-> **TL;DR result:** on 200 BIRD-dev questions, fine-tuning lifted the **valid-SQL
-> rate 40% → 73.5%** (EX 14.0% → 15.5%). See [Results](#results).
+> **TL;DR result:** on 200 BIRD-dev questions, fine-tuning sharply improved the
+> **valid-SQL rate (40% → 73.5%)**; execution accuracy moved only marginally
+> (14.0% → 15.5%, **not statistically significant** at n=200). See [Results](#results).
 
 ---
 
@@ -147,14 +148,25 @@ T4, evaluated on **200 BIRD-dev** questions. Adapter:
 
 | Run | Execution acc. (EX) | Valid-SQL rate | Exact match |
 |---|---|---|---|
-| Baseline (1.5B, zero-shot) | 14.0% | 40.0% | 0.0% |
-| **Exp 1 (1.5B + BIRD, QLoRA)** | **15.5%** | **73.5%** | **2.0%** |
+| Baseline (1.5B, zero-shot) | 14.0% (28/200) | 40.0% (80/200) | 0.0% (0/200) |
+| **Exp 1 (1.5B + BIRD, QLoRA)** | **15.5% (31/200)** | **73.5% (147/200)** | **2.0% (4/200)** |
 
-**Headline: fine-tuning nearly doubled the valid-SQL rate (40% → 73.5%)** — the
-model learned to emit clean, executable, schema-grounded SQL (the brief's
-priority). EX gains are modest, as expected for a small/quick run. EX by
-difficulty: simple 21.9%, moderate 7.4%, challenging 0%. Executed notebook +
-metrics in [`results/`](results/); full analysis in [`report/REPORT.md`](report/REPORT.md).
+EX by difficulty (the entire +3 EX gain is in *simple*; harder buckets are unchanged):
+
+| Split | n | Baseline EX | Fine-tuned EX |
+|---|---|---|---|
+| simple | 119 | 19.3% | 21.9% |
+| moderate | 68 | 7.4% | 7.4% |
+| challenging | 13 | 0.0% | 0.0% |
+
+**Headline: fine-tuning made the model emit executable SQL far more reliably —
+valid-SQL rate 40% → 73.5%** (a large lift, 80→147 of 200; clearly significant,
+z≈6.8). **Execution accuracy moved only marginally (14.0% → 15.5%, +3/200) and is
+*not* statistically significant**: the paired net gain is just 3 discordant
+questions, so an exact McNemar test gives **p ≥ 0.25**. The honest read — this run
+reliably improves *runnable* SQL; detecting a true EX gain needs the full dev set
+(1534) and a larger training budget. Full analysis in
+[`report/REPORT.md`](report/REPORT.md); executed notebook in [`results/`](results/).
 
 ![Baseline vs fine-tuned](report/figures/before_after.png)
 

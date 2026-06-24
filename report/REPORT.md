@@ -269,9 +269,17 @@ precisely the brief's priority ("rewarded if executable"). The base model, by
 contrast, frequently wrapped queries in prose/markdown or referenced non-existent
 columns, so 60% of its outputs failed to run at all.
 
-Execution accuracy moved only modestly (14.0% → 15.5%). Getting the *exact right
-result set* is far harder than producing runnable SQL, and this was a deliberately
-small run (the notebook's quick preset). The numbers land squarely in the
+Execution accuracy moved only modestly (14.0% → 15.5%) — and that delta is **not
+statistically significant**. It is a paired comparison on the same 200 questions,
+so the right test is McNemar's: the net gain is just **+3 discordant questions**
+(28 → 31 correct), which even in the most favorable split gives an exact McNemar
+**p ≥ 0.25**. (The whole +3 falls in the *simple* bucket; moderate and challenging
+are unchanged.) By contrast the valid-SQL lift, 80 → 147 of 200, is large and
+clearly significant (z ≈ 6.8). So the honest takeaway is that this run **reliably
+improves *runnable* SQL**, while a genuine EX gain is not yet measurable at this
+scale. Getting the *exact right result set* is far harder than producing runnable
+SQL, and this was a deliberately small run (the notebook's quick preset). The
+numbers land squarely in the
 **~15–30% EX / high valid-SQL** range expected for a time-boxed 1.5B QLoRA on
 BIRD (for scale: GPT-4 scored ~46% EX at release; human ceiling ~92%). The
 difficulty gradient is exactly as predicted — gains concentrate on *simple*
@@ -328,6 +336,10 @@ slips in `WHERE … AND … OR …`. These point directly at the fixes below.
 - **Value/literal errors.** The model can't see actual cell values, so it guesses
   string literals and date formats. → Inject a few **sample rows per table**
   (supported via `with_samples=True`) or a value-retrieval step.
+- **Underpowered evaluation (n=200).** The EX comparison is statistically
+  inconclusive at this size (see §8: McNemar p ≥ 0.25 for a +3/200 gain). → Evaluate
+  on the **full dev set (1534)** and report a significance test, so a real EX
+  improvement can actually be detected rather than lost in noise.
 - **Evaluation caveats.** EX with result-set comparison can over-credit
   (different query, same rows by coincidence) or under-credit (column ordering,
   ties). Per-difficulty reporting partly mitigates this; BIRD's official
