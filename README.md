@@ -180,6 +180,65 @@ reliably improves *runnable* SQL; detecting a true EX gain needs the full dev se
 - **Valid-SQL rate** — fraction that executes without error.
 - **Exact match** — normalized string equality (strict lower bound).
 
+## System Design
+
+This section covers two things: the design of the training and evaluation pipeline as built, and how the fine-tuned model would sit inside a safe production Text-to-SQL service.
+
+### Requirements
+
+**Functional**
+- Fine-tune a ≤3B open model to turn a natural-language question plus a database schema into executable SQL.
+- Evaluate by execution against real SQLite databases (BIRD dev) and compare against the zero-shot baseline.
+
+**Non-functional**
+- **Free compute**: a single 16 GB T4 (Colab or Kaggle) for training; CPU-only smoke test with no downloads.
+- **Reproducibility**: dataclass presets per experiment, fixed seeds, and a published adapter on Hugging Face.
+- **Honest evaluation**: execution accuracy as the primary metric, with significance testing (McNemar).
+
+### Pipeline Architecture
+
+```text
+ BIRD (+ SynSQL subset) ─► data_prep.py ─► standardized JSONL
+                               │  schema_utils.py: reconstruct and serialize the SQLite schema
+                               │  prompts.py: chat messages (schema + question → SQL)
+                               ▼
+ train.py: Qwen2.5-Coder-1.5B, 4-bit base + LoRA r=16 (Unsloth; PEFT fallback)
+           TRL SFTTrainer, completion-only loss, effective batch 16, cosine LR 2e-4
+                               ▼
+ LoRA adapter ─► Hugging Face Hub (Shiverion/qwen2.5-coder-1.5b-bird-qlora)
+                               ▼
+ inference.py: batch generation ─► SQL extraction ─► evaluate.py
+           run gold and predicted SQL on sqlite3 ─► execution accuracy, valid-SQL rate, exact match
+                               ▼
+ notebooks/03 (error analysis) ─► report/REPORT.md ─► REPORT.pdf
+```
+
+### Serving Design (Target)
+
+```text
+ User question ─► API ─► schema linker (select relevant tables and columns)
+              ─► fine-tuned model (vLLM or TGI, adapter merged or hot-loaded)
+              ─► SQL validator (parse, read-only allow-list, row limit)
+              ─► read-only replica with a query timeout ─► result + SQL shown to the user
+```
+
+A generated query must never reach a writable database. Read-only credentials, AST validation, and timeouts are the hard boundary; the model is treated as untrusted.
+
+### Trade-offs
+
+| Decision | Benefit | Cost |
+| --- | --- | --- |
+| 1.5B model with QLoRA | Trains on a free T4; cheap to serve | Limited reasoning on moderate and challenging queries |
+| Full schema in the prompt | Simple, no extra component | Context grows with schema size; no schema linking |
+| Execution accuracy on 200 dev questions | Measures what users care about | Too small to detect small gains (p ≥ 0.25 for the EX change) |
+| Greedy decoding | Deterministic, fast | No self-consistency or execution-guided retries |
+
+### What to Revisit as It Grows
+
+- Add schema linking and execution-guided decoding (generate several candidates, keep one that executes).
+- Evaluate on the full BIRD dev set (1,534 questions) to detect real execution-accuracy gains.
+- Scale data (more SynSQL) and compare against a 3B model where licensing allows.
+
 ## Limitations
 The model is intentionally small and time-boxed, so it is **not** production
 accurate — see the report's *Weaknesses & Improvements* section (schema linking,
