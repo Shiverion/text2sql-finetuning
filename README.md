@@ -197,29 +197,92 @@ This section covers two things: the design of the training and evaluation pipeli
 
 ### Pipeline Architecture
 
-```text
- BIRD (+ SynSQL subset) ─► data_prep.py ─► standardized JSONL
-                               │  schema_utils.py: reconstruct and serialize the SQLite schema
-                               │  prompts.py: chat messages (schema + question → SQL)
-                               ▼
- train.py: Qwen2.5-Coder-1.5B, 4-bit base + LoRA r=16 (Unsloth; PEFT fallback)
-           TRL SFTTrainer, completion-only loss, effective batch 16, cosine LR 2e-4
-                               ▼
- LoRA adapter ─► Hugging Face Hub (Shiverion/qwen2.5-coder-1.5b-bird-qlora)
-                               ▼
- inference.py: batch generation ─► SQL extraction ─► evaluate.py
-           run gold and predicted SQL on sqlite3 ─► execution accuracy, valid-SQL rate, exact match
-                               ▼
- notebooks/03 (error analysis) ─► report/REPORT.md ─► REPORT.pdf
+```mermaid
+flowchart TD
+    subgraph sources["Data Sources"]
+        BIRD(["BIRD"])
+        SYN(["SynSQL subset"])
+    end
+
+    subgraph preparation["Data Preparation"]
+        SCHEMA["schema_utils.py<br/>reconstruct and serialize<br/>SQLite schema"]
+        PROMPTS["prompts.py<br/>schema + question<br/>to SQL chat"]
+        PREP["data_prep.py"]
+        JSONL[("Standardized JSONL")]
+    end
+
+    subgraph training["QLoRA Fine-tuning"]
+        BACKEND["Unsloth<br/>PEFT fallback"]
+        RECIPE["TRL SFTTrainer<br/>completion-only, batch 16<br/>cosine LR 2e-4"]
+        TRAIN["train.py<br/>Qwen2.5-Coder-1.5B<br/>4-bit + LoRA r=16"]
+        ADAPTER[("LoRA adapter")]
+    end
+
+    subgraph evaluation["Inference and Evaluation"]
+        INFER["inference.py<br/>batch generation"]
+        EXTRACT["SQL extraction"]
+        SQLITE[("SQLite databases")]
+        EVAL["evaluate.py<br/>run gold and predicted SQL"]
+        METRICS["Execution accuracy<br/>valid-SQL rate<br/>exact match"]
+    end
+
+    subgraph reporting["Analysis and Reporting"]
+        NOTEBOOK["notebooks/03<br/>error analysis"]
+        REPORT["report/REPORT.md"]
+        PDF["REPORT.pdf"]
+    end
+
+    HUB(["Hugging Face Hub<br/>Shiverion/qwen2.5-coder-<br/>1.5b-bird-qlora"])
+
+    BIRD --> PREP
+    SYN --> PREP
+    SCHEMA --> PREP
+    PROMPTS --> PREP
+    PREP --> JSONL
+    JSONL --> TRAIN
+    BACKEND --> TRAIN
+    RECIPE --> TRAIN
+    TRAIN --> ADAPTER
+    ADAPTER --> HUB
+    HUB --> INFER
+    INFER --> EXTRACT
+    EXTRACT --> EVAL
+    SQLITE --> EVAL
+    EVAL --> METRICS
+    METRICS --> NOTEBOOK
+    NOTEBOOK --> REPORT
+    REPORT --> PDF
 ```
 
 ### Serving Design (Target)
 
-```text
- User question ─► API ─► schema linker (select relevant tables and columns)
-              ─► fine-tuned model (vLLM or TGI, adapter merged or hot-loaded)
-              ─► SQL validator (parse, read-only allow-list, row limit)
-              ─► read-only replica with a query timeout ─► result + SQL shown to the user
+```mermaid
+flowchart TD
+    subgraph client["Client"]
+        USER["User question"]
+        OUTPUT["Result + SQL<br/>shown to user"]
+    end
+
+    subgraph service["Text-to-SQL Service"]
+        API["API"]
+        LINKER["Schema linker<br/>select relevant tables<br/>and columns"]
+        VALIDATOR["SQL validator<br/>parse and read-only allow-list<br/>row limit"]
+    end
+
+    subgraph runtime["Model Runtime"]
+        MODEL["Fine-tuned model<br/>vLLM or TGI<br/>merged or hot-loaded"]
+    end
+
+    subgraph data["Data"]
+        REPLICA[("Read-only replica<br/>query timeout")]
+    end
+
+    USER --> API
+    API --> LINKER
+    LINKER --> MODEL
+    MODEL --> VALIDATOR
+    VALIDATOR --> REPLICA
+    REPLICA --> OUTPUT
 ```
 
 A generated query must never reach a writable database. Read-only credentials, AST validation, and timeouts are the hard boundary; the model is treated as untrusted.
